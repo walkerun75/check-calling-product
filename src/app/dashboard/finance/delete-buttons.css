@@ -1,0 +1,42 @@
+.entry-menu .delete-entry,
+.rule-editor .delete-rule {
+  display: flex !important;
+  justify-content: flex-start !important;
+  width: auto !important;
+  margin-top: 10px !important;
+  padding: 10px 0 0 !important;
+  border: 0 !important;
+  border-top: 1px solid #68404a !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.entry-menu .delete-entry button,
+.rule-editor .delete-rule button {
+  display: inline-grid !important;
+  width: auto !important;
+  min-width: 88px !important;
+  height: 38px !important;
+  padding: 0 16px !important;
+  place-items: center !important;
+  border: 1px solid #f06a78 !important;
+  border-radius: 7px !important;
+  background: #712633 !important;
+  color: transparent !important;
+  font-size: 0 !important;
+  font-weight: 900 !important;
+  cursor: pointer !important;
+}
+
+.entry-menu .delete-entry button::after,
+.rule-editor .delete-rule button::after {
+  content: "Delete";
+  color: #fff;
+  font-size: 14px;
+}
+
+.entry-menu .delete-entry button:hover,
+.rule-editor .delete-rule button:hover {
+  background: #963344 !important;
+}

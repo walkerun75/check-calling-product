@@ -1,0 +1,22 @@
+.form-submit button {
+  min-height: 46px;
+  padding: 10px 24px;
+  border: 1px solid #63e8c5;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #18a889, #08735f);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 850;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(8, 115, 95, 0.35);
+}
+
+.form-submit button:hover {
+  background: linear-gradient(180deg, #20bd99, #09846d);
+  transform: translateY(-1px);
+}
+
+.form-submit button:focus-visible {
+  outline: 3px solid #a0f8df;
+  outline-offset: 3px;
+}

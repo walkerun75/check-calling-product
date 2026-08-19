@@ -1,0 +1,61 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+
+type Vehicle = { id:string; year:number|null; make:string|null; model:string|null; status:string; vin:string; primary_photo?:string|null };
+type Draft = { id:string; vehicleId:string; title:string; date:string; time:string; kind:"booking"|"block" };
+type WorkshopEvent = { id:string; vehicleId:string; status:string; dueAt:string|null };
+const days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+type SpeechResultEvent = { results:ArrayLike<{ 0:{ transcript:string }; isFinal:boolean }> };
+type SpeechErrorEvent = { error:string };
+type SpeechRecognitionInstance = { continuous:boolean; interimResults:boolean; lang:string; start:()=>void; stop:()=>void; abort:()=>void; onresult:((event:SpeechResultEvent)=>void)|null; onerror:((event:SpeechErrorEvent)=>void)|null; onend:(()=>void)|null };
+type SpeechRecognitionConstructor = new()=>SpeechRecognitionInstance;
+
+export default function SmartCalendarClient({vehicles,organizationName,workshopCount,workshopEvents}:{vehicles:Vehicle[];organizationName:string;workshopCount:number;workshopEvents:WorkshopEvent[]}) {
+  const [view,setView] = useState("Operations");
+  const [weekOffset,setWeekOffset] = useState(0);
+  const [dialog,setDialog] = useState<"ai"|"booking"|"block"|null>(null);
+  const [drafts,setDrafts] = useState<Draft[]>([]);
+  const [vehicleId,setVehicleId] = useState(vehicles[0]?.id ?? "");
+  const [date,setDate] = useState(""); const [time,setTime] = useState("09:00"); const [title,setTitle] = useState("");
+  const [aiQuestion,setAiQuestion] = useState(""); const [aiAnswer,setAiAnswer] = useState("");
+  const [listening,setListening] = useState(false); const [micMessage,setMicMessage] = useState("");
+  const recognitionRef = useRef<SpeechRecognitionInstance|null>(null);
+  const ready = vehicles.filter(v=>v.status==="ready").length;
+  const attention = vehicles.filter(v=>v.status!=="ready"&&v.status!=="rented").length;
+  const weekLabel = useMemo(()=>weekOffset===0?"Current week":weekOffset>0?`${weekOffset} week${weekOffset===1?"":"s"} ahead`:`${Math.abs(weekOffset)} week${weekOffset===-1?"":"s"} back`,[weekOffset]);
+  const todayColumn=(new Date().getDay()+6)%7;
+  function workshopBlocksDay(event:WorkshopEvent,index:number){
+    if(!event.dueAt) return index===todayColumn;
+    const due=new Date(event.dueAt); const now=new Date();
+    const daysUntil=Math.ceil((due.getTime()-now.getTime())/86400000);
+    if(daysUntil<0) return index===todayColumn;
+    return index>=todayColumn&&(daysUntil>=7||index<=todayColumn+daysUntil);
+  }
+  function addDraft(kind:"booking"|"block") { if(!vehicleId||!date||!title.trim()) return; setDrafts(current=>[...current,{id:crypto.randomUUID(),vehicleId,title:title.trim(),date,time,kind}]); setDialog(null); setTitle(""); }
+  function askAI(question=aiQuestion) { const q=question.toLowerCase(); setAiQuestion(question); if(!vehicles.length)setAiAnswer("Add a verified fleet vehicle before scheduling operations."); else if(q.includes("maintenance"))setAiAnswer(`${attention} vehicle${attention===1?" needs":"s need"} attention. Review those records before protecting a service window.`); else if(q.includes("available")||q.includes("booking"))setAiAnswer(`${ready} of ${vehicles.length} vehicles are currently marked ready. Booking conflicts cannot be confirmed until production rental records are connected.`); else setAiAnswer(`I can see ${vehicles.length} verified fleet record${vehicles.length===1?"":"s"}, ${ready} ready, and ${attention} needing attention. Calendar items created here remain drafts until booking storage is connected.`); }
+  function toggleMicrophone() {
+    if (listening) { recognitionRef.current?.stop(); return; }
+    const speechWindow = window as typeof window & { SpeechRecognition?:SpeechRecognitionConstructor; webkitSpeechRecognition?:SpeechRecognitionConstructor };
+    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!Recognition) { setMicMessage("Voice input is not supported in this browser. You can still type your question."); return; }
+    const recognition = new Recognition();
+    recognition.continuous=false; recognition.interimResults=true; recognition.lang="en-US";
+    recognition.onresult=event=>{ let transcript=""; for(let index=0;index<event.results.length;index++) transcript+=event.results[index][0].transcript; setAiQuestion(transcript.trim()); };
+    recognition.onerror=event=>{ setListening(false); setMicMessage(event.error==="not-allowed"||event.error==="service-not-allowed"?"Microphone permission was denied. Allow microphone access and try again.":`Voice input stopped: ${event.error.replaceAll("-"," ")}.`); };
+    recognition.onend=()=>{ setListening(false); recognitionRef.current=null; };
+    recognitionRef.current=recognition; setMicMessage("Listening… speak your calendar question."); setListening(true);
+    try { recognition.start(); } catch { setListening(false); setMicMessage("The microphone could not start. Please try again."); }
+  }
+  useEffect(()=>()=>recognitionRef.current?.abort(),[]);
+  useEffect(()=>{ if(dialog!=="ai"&&listening) recognitionRef.current?.stop(); },[dialog,listening]);
+  return <>
+    <header className="calendar-topbar"><div><strong className="brand">Check<i>✓</i>Calling</strong><span>Smart Calendar · {organizationName}</span></div><span className="calendar-connection">Fleet intelligence connected</span></header>
+    <section className="calendar-heading"><div><div className="eyebrow">Check Calling intelligence</div><h1>Smart Calendar</h1><p>One operating timeline for reservations, vehicle readiness, maintenance, revenue, and staff tasks.</p></div><div className="calendar-actions"><button className="button secondary" onClick={()=>setDialog("ai")}>✦ Ask Calendar AI</button><button className="button secondary" onClick={()=>setDialog("block")}>Block availability</button><button className="button" onClick={()=>setDialog("booking")}>＋ Create booking</button></div></section>
+    <section className="calendar-toolbar"><div className="calendar-tabs">{["Operations","Revenue","Vehicle health","Renter readiness","Staff workload"].map(tab=><button className={view===tab?"active":""} onClick={()=>setView(tab)} key={tab}>{tab}</button>)}</div><div className="week-controls"><button onClick={()=>setWeekOffset(v=>v-1)} aria-label="Previous week">←</button><button onClick={()=>setWeekOffset(0)}>Today</button><strong>{weekLabel}</strong><button onClick={()=>setWeekOffset(v=>v+1)} aria-label="Next week">→</button><select aria-label="Calendar view"><option>Week</option><option>Month</option></select></div></section>
+    <section className="calendar-kpis"><div><span>Fleet assets</span><strong>{vehicles.length}</strong><small>Verified records</small></div><div><span>Booking readiness</span><strong>{vehicles.length?Math.round(ready/vehicles.length*100):0}%</strong><small>{ready} ready</small></div><div><span>Maintenance risk</span><strong>{attention}</strong><small>Needs attention</small></div><div><span>Workshop</span><strong>{workshopCount}</strong><small>Active turnarounds</small></div><div><span>AI view</span><strong>{view}</strong><small>Active lens</small></div></section>
+    <section className="fleet-calendar"><div className="calendar-grid-head"><strong>Fleet assets</strong>{days.map(day=><span key={day}>{day}</span>)}</div>{vehicles.map(vehicle=><div className="calendar-vehicle-row" key={vehicle.id}><div className="calendar-vehicle">{vehicle.primary_photo?<img className="vehicle-thumb" src={vehicle.primary_photo} alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}/>:<span className="vehicle-thumb">CAR</span>}<div><strong>{vehicle.year} {vehicle.make}</strong><span>{vehicle.model}</span><small className={vehicle.status==="ready"?"ready":"attention"}>{vehicle.status}</small></div></div>{days.map((day,index)=><div className="calendar-cell" key={day}>{workshopEvents.filter(event=>event.vehicleId===vehicle.id&&workshopBlocksDay(event,index)).map(event=><article className="calendar-event block" key={event.id}><strong>{event.status==="maintenance_hold"?"Maintenance hold":"Rental hold"}</strong><small>{event.dueAt?`Until ${new Date(event.dueAt).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"})}`:"Readiness date needed"}</small></article>)}{drafts.filter(d=>d.vehicleId===vehicle.id && new Date(d.date+"T00:00:00").getDay()===(index+1)%7).map(d=><article className={`calendar-event ${d.kind}`} key={d.id}><strong>{d.title}</strong><small>{d.time}</small></article>)}</div>)}</div>)}{!vehicles.length&&<div className="calendar-no-fleet">Add a verified vehicle to begin the intelligent fleet timeline.</div>}</section>
+    <div className="calendar-lower-grid"><section className="card"><div className="eyebrow">AI priority queue</div><h2>Decisions ready for you</h2><div className="calendar-decision-list">{attention>0?<div><i/><span><strong>Fleet readiness</strong><small>{attention} vehicle record{attention===1?" needs":"s need"} attention before scheduling.</small></span><button onClick={()=>location.assign("/dashboard")}>Review</button></div>:<div><i className="clear"/><span><strong>Fleet ready</strong><small>No vehicle-readiness exceptions detected.</small></span></div>}<div><i/><span><strong>Rental intelligence</strong><small>Connect booking records to enable conflict and revenue recommendations.</small></span></div><div><i/><span><strong>Draft scheduling</strong><small>{drafts.length} local draft event{drafts.length===1?"":"s"} awaiting production storage.</small></span></div></div></section><section className="card"><div className="eyebrow">Next actions</div><h2>Today’s movement</h2><div className="calendar-decision-list">{drafts.slice(0,4).map(d=><div key={d.id}><time>{d.time}</time><span><strong>{d.title}</strong><small>{d.kind==="block"?"Availability block":"Booking draft"}</small></span></div>)}{!drafts.length&&<div className="calendar-empty-inline">No scheduled movements in connected records.</div>}</div></section></div>
+    {dialog&&<div className="calendar-dialog-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setDialog(null)}}><section className="calendar-dialog" role="dialog" aria-modal="true" aria-labelledby="calendar-dialog-title"><button className="calendar-dialog-close" onClick={()=>setDialog(null)} aria-label="Close">×</button>{dialog==="ai"?<><div className="eyebrow">Calendar intelligence</div><h2 id="calendar-dialog-title">Ask Calendar AI</h2>{aiAnswer&&<div className="ai-answer" aria-live="polite">{aiAnswer}</div>}<div className="ai-input"><div className="ai-input-field"><input value={aiQuestion} onChange={e=>setAiQuestion(e.target.value)} placeholder="Ask about the calendar…" onKeyDown={e=>{if(e.key==="Enter")askAI()}}/><button className={`ai-mic ${listening?"listening":""}`} type="button" onClick={toggleMicrophone} aria-label={listening?"Stop listening":"Ask with microphone"} aria-pressed={listening}><span aria-hidden="true">🎙</span></button></div><button className="button" onClick={()=>askAI()} disabled={!aiQuestion.trim()}>Ask</button></div>{micMessage&&<p className={`mic-message ${listening?"listening":""}`} aria-live="polite">{micMessage}</p>}</>:<><div className="eyebrow">Calendar draft</div><h2 id="calendar-dialog-title">{dialog==="booking"?"Create booking draft":"Block vehicle availability"}</h2><p className="dialog-note">This is a working draft. Production persistence will activate with the booking database.</p><label>Vehicle<select value={vehicleId} onChange={e=>setVehicleId(e.target.value)}>{vehicles.map(v=><option value={v.id} key={v.id}>{v.year} {v.make} {v.model}</option>)}</select></label><label>{dialog==="booking"?"Renter or booking name":"Reason"}<input value={title} onChange={e=>setTitle(e.target.value)} placeholder={dialog==="booking"?"Renter name":"Maintenance, owner use…"}/></label><div className="dialog-fields"><label>Date<input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label>Time<input type="time" value={time} onChange={e=>setTime(e.target.value)}/></label></div><button className="button calendar-save" disabled={!vehicleId||!date||!title.trim()} onClick={()=>addDraft(dialog)}>Save draft</button></>}</section></div>}
+  </>;
+}
