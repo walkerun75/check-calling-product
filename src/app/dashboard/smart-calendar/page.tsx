@@ -4,6 +4,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import PortalControls from "../command-center/portal-controls";
 import SmartCalendarClient from "./smart-calendar-client";
+import "./smart-calendar-readable.css";
 
 type Vehicle = { id:string; year:number|null; make:string|null; model:string|null; status:string; vin:string; primary_photo?:string|null };
 
